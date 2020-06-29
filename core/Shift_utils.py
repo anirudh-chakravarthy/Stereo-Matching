@@ -23,32 +23,26 @@ def binary_add(a, b, carry_in=0):
   return res
 
 
-# traverse tree to retrieve all nodes and corresponding root nodes at a given level
+# traverse tree to retrieve all nodes and corresponding parent nodes at a given level
 def reach_level(tree, level):
+  assert tree.level <= level, "Reached greater level than %d" % level
   nodes = []
-  parents = []
   if tree is None:
-    return nodes, []
+    return nodes
 
   # traverse until level
-  if tree.level <= level:
-    left_list, left_parents = reach_level(tree.left_child, level)
-    right_list, right_parents = reach_level(tree.right_child, level)
+  if tree.level < level:
+    left_list = reach_level(tree.left_child, level)
+    right_list = reach_level(tree.right_child, level)
     if left_list:
       nodes = nodes + left_list
     if right_list:
       nodes = nodes + right_list
-    # gather root nodes i.e nodes at level H
-    if tree.level == level:
-      parents.append(tree)
-    else:
-      parents = left_parents + right_parents
-    return nodes, parents
 
   # level found - return node
   else: 
     nodes = nodes + tree
-    return nodes, []
+    return nodes
 
 
 # deep copy tree structure - for shifting tree

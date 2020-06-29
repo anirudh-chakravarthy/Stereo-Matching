@@ -1,16 +1,17 @@
 import numpy as np
 from PIL import Image
 
+from core.Match import match
 from core.Tree import Node
 
 
-image = Image.open('download.jpeg').convert('L')
+image = Image.open('download.jpeg')
 image = np.asarray(image, dtype="int32")
-print(image.shape)
 
-root = Node(image[0])
+root = Node(image)
 print(root.mean, root.stdev)
-print(image[0])
+print(root.width)
+# print(image[0])
 
 root.split()
 print(root.left_child.mean, root.left_child.stdev)
