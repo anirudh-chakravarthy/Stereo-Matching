@@ -21,7 +21,9 @@ class ObjectFragment:
 
   # shift each object under the specific resolution
   def _shifted_representation(self, shift):
-    self.shifted_seq = binary_add(seq, bin(shift))
+    self.shifted_seq = binary_add(self.seq, bin(shift))
+    print("Seq:", self.seq, "Shift:", shift)
+    print("Shifted Seq:", self.shifted_seq)
 
   # generate trees for the shifted object
   def shifted_tree(self, shift):
@@ -54,4 +56,4 @@ class ObjectFragment:
         if new_itr.right_child is None:
           new_itr.right_child = Node(orig_itr.pixels, self.shifted_seq[:j+1])
         new_itr = new_itr.right_child
-    return self.new_tree
+    return new_itr

@@ -19,10 +19,10 @@ class Node:
     self.pixels = pixels
     self.left_child = None
     self.right_child = None
-    self.width = self.pixels.shape[0] # size of segment is the width of tree
+    self.width = len(self.pixels) # size of segment is the width of tree
     self.seq = seq
     self.level = len(self.seq) + 1
-    self.match = None
+    self.match = False
     self.quality = -1
     self.disparity = 0
 
