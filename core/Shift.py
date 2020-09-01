@@ -4,14 +4,14 @@ from core.Shift_utils import reach_level, binary_add
 from core.Tree import Node
 
 
-'''
+class ObjectFragment:
+  '''
   Fields
     seq: sequence corr. to object
     shifted_seq: resultant shifted sequences for the object
     root: root of tree
     new_tree: root of new shifted tree for all sequences
-'''
-class ObjectFragment:
+  '''
   def __init__(self, root, seq):
     self.seq = seq
     self.shifted_seq = None
@@ -56,4 +56,5 @@ class ObjectFragment:
         if new_itr.right_child is None:
           new_itr.right_child = Node(orig_itr.pixels, self.shifted_seq[:j+1])
         new_itr = new_itr.right_child
+    print(shi)
     return new_itr

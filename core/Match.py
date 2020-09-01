@@ -1,104 +1,114 @@
 import sys
 import math
+import numpy as np
 
-from core.Shift import ObjectFragment
-from core.Shift_utils import reach_level
-from core.Tree import similarity
-
-L2_THRESHOLD = 0.30
-
-
-# mark entire subtree as matched
-def propagate_match(left_tree, right_tree):
-  if left_tree is None:
-    return
-
-  left_tree.match = True
-  right_tree.match = left_tree
-  propagate_match(left_tree.left_child, right_tree.left_child)
-  propagate_match(left_tree.right_child, right_tree.right_child)
+# from core.Similarity import Similarity
+from core.utils import reach_level
+from core.Hypothesis import normal_test
 
 
-# match left tree node with corresponding right tree node - shift onto others if not match
-def match(left_tree, right_tree, left_root=None, right_root=None, shift=0):
-  if left_tree is None or right_tree is None:
-    return
+class MatchTrees:
+  '''
+  Fields
+    left_root: root of left tree
+    right_tree: root of right tree
+    similarity_test: statistical test for comparing object fragments
+  '''
+  def __init__(self, 
+               left_root, 
+               right_root, 
+               use_homogeneity=False,
 
-  if left_root is None:
-    left_root = left_tree
-  if right_root is None:
-    right_root = right_tree
+  ):
+    self.left_root = left_root
+    self.right_root = right_root
+    self.use_homogeneity = use_homogeneity
+    self.match_objective = 0.
+    # self.similarity_obj = Similarity(left_root, right_root, horizontal, vertical, homogeneity)
 
-  # already matched
-  if right_tree.match:
-    return
+  def similarity_test(self, left_tree, right_tree):
+    diff = left_tree.pixels - right_tree.pixels
+    quality = np.linalg.norm(left_tree.pixels - right_tree.pixels)
+    stat, similar = normal_test(left_tree.pixels - right_tree.pixels)
+    return quality, stat, similar
 
-  quality = similarity(left_tree, right_tree)
-  # match found
-  if quality < L2_THRESHOLD:
-    # right_tree.match = left_tree
-    right_tree.quality = quality
-    right_tree.disparity = shift
-    propagate_match(left_tree, right_tree)
-    # left_tree.match = True
-    print("Matched {0} with {1} with quality: {2}".format(left_tree.seq, right_tree.seq, quality))
-    return
+  # mark entire right subtree as matched
+  def _propagate_match(self, left_tree, right_tree):
+    if right_tree is None:
+      return
 
-  match(left_tree.left_child, right_tree.left_child, left_root, right_root, shift)
-  match(left_tree.right_child, right_tree.right_child, left_root, right_root, shift)
-
-  # pixel-level still no match
-  if left_tree.width == 1:
-    pass
-  # if children matched - node is matched
-  elif left_tree.left_child.match and left_tree.right_child.match:
     left_tree.match = True
+    right_tree.match = left_tree
+    self._propagate_match(left_tree, right_tree.left_child)
+    self._propagate_match(left_tree, right_tree.right_child)
 
-  # matching complete
-  if left_tree == left_root:
-    return
+  # match the subtrees directly
+  def _direct_match(self, left_tree, right_tree):
+    quality, stat, isSimilar = self.similarity_test(left_tree, right_tree)
+    if isSimilar:
+      right_tree.quality = quality
+      self.match_objective += quality
+      if self.use_homogeneity:
+        self.match_objective += 1 - stat
+      right_tree.disparity = 0
+      self._propagate_match(left_tree, right_tree)
+      print("Directly matched {0} with {1} with quality: {2}"\
+              .format(left_tree.seq, right_tree.seq, quality))
+      return
 
-  # print("{} not matched yet!".format(left_tree.seq))
+    # reached pixel level
+    if right_tree.width == 1:
+      return
 
-  # node still not matched - perform shifting on current node
-  if not left_tree.match:
-    obj_frag = ObjectFragment(left_root, left_tree.seq)
-    right_nodes = reach_level(right_root, left_tree.level)
+    # left tree is dynamically grown
+    left_tree.split()
+    self._direct_match(left_tree.left_child, right_tree.left_child)
+    self._direct_match(left_tree.right_child, right_tree.right_child)
 
+  # perform match with all unmatched nodes at given level
+  def _match_level(self, left_tree, right_tree):
+    if left_tree is None or left_tree.match:
+      return
+
+    # extract all nodes at given level
+    right_nodes = reach_level(self.right_root, left_tree.level)
     quality = [0] * len(right_nodes)
-    # perform shift 
+    stat = [0] * len(right_nodes)
+    isSimilar = [False] * len(right_nodes)
+    exactPosition = 0
+
+    # match left nodes with all right nodes at given level
     for i, right_node in enumerate(right_nodes):
-      # print("Match.py:", left_tree.seq, right_node.seq)
-      shift_amt = int(right_node.seq, 2) - int(left_tree.seq, 2) # difference in sequences = shift multiple
-      # if already matched / direct match already attempted anyways / sizes of fragments are different [if odd width]
-      if shift_amt == 0 or right_node.match or right_node.width != left_tree.width:
+      # skip if same index already tried before / already matched / different width 
+      if right_node.seq == left_tree.seq or right_node.match or left_tree.width != right_node.width:
         quality[i] = math.inf
+        if right_node.seq == left_tree.seq:
+          exactPosition = i
         continue
-      # new_tree = obj_frag.shifted_tree(shift_amt)
-      quality[i] = similarity(left_tree, right_node)
+      quality[i], stat[i], isSimilar[i] = self.similarity_test(left_tree, right_node)
 
-    # match found
-    if min(quality) < L2_THRESHOLD:
-      idx = quality.index(min(quality))
+    # greedy match - best quality
+    idx = quality.index(max(quality))
+    if isSimilar[idx]:
+      self.match_objective += quality[idx]
+      if self.use_homogeneity:
+        self.match_objective += 1. - stat[idx]
       right_match_node = right_nodes[idx]
-      # right_match_node.match = left_tree
       right_match_node.quality = quality[idx]
-      right_match_node.disparity = shift + (int(right_match_node.seq, 2) - int(left_tree.seq, 2)) * left_tree.width
-      # left_tree.match = True  
-      propagate_match(left_tree, right_match_node)
-      print("Matched {0} with {1} at idx {2} with quality: {3}, disparity: {4}".format(left_tree.seq, right_match_node.seq, idx, quality[idx], right_match_node.disparity))
+      right_match_node.disparity = abs(exactPosition - idx) * left_tree.width
+      self._propagate_match(left_tree, right_match_node)
+      print("Matched {0} with {1} at idx {2} with quality: {3}, disparity: {4}"\
+              .format(left_tree.seq, right_match_node.seq, idx, quality[idx], right_match_node.disparity))
 
-    # not matched still - lies in shadow region?
+    # best isn't good enough
     else:
-      pass
+      if left_tree.left_child is None and left_tree.right_child is None:
+        print("Unable to match", left_tree.seq, "Width:", left_tree.width, "Quality:", max(quality))
+      self._match_level(left_tree.left_child, right_tree.left_child)
+      self._match_level(left_tree.right_child, right_tree.right_child)
 
-      # print("Shifted Match.py:", new_tree.seq)
-      # new_shift = shift + shift_amt * left_tree.width
-      # match(new_tree, right_node, left_root, right_root, new_shift)
-      # # matching with first node which provides good quality
-      # if right_node.match == left_tree:
-      #   break
-
-      # # no match exists - shadown region i.e unknown depth?
-      # if i == len(right_nodes) - 1:
-      #   pass
+  # match the two images
+  def run(self):
+    self._direct_match(self.left_root, self.right_root) # direct matches
+    self._match_level(self.left_root, self.right_root) # match remaining nodes
+    return self.match_objective
